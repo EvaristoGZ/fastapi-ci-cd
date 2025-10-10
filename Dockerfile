@@ -1,10 +1,10 @@
 # Build de dependencias (si hiciera falta, aquí es casi no-op)
-FROM python:3.14-slim AS builder
+FROM python:3.12-slim AS builder
 WORKDIR /app
 RUN pip install --no-cache-dir fastapi uvicorn[standard]
 
 # Runtime
-FROM python:3.14-slim
+FROM python:3.12-slim
 WORKDIR /app
 COPY --from=builder /usr/local /usr/local
 COPY app ./app
