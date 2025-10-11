@@ -1,4 +1,4 @@
-name: Build & Push Docker Image + Tests
+name: Build & Push Docker Image + Tests + Quality
 
 on:
   push:
@@ -12,14 +12,15 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  tests:
-    name: Tests + Coverage
+  quality:
+    name: Lint + Format Check + Types + SAST
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
+        id: setup-python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -28,7 +29,54 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-${{ hashFiles('**/pyproject.toml') }}
+          key: poetry-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: poetry-${{ runner.os }}-
+
+      - name: Install Poetry
+        run: pip install "poetry==1.8.3"
+
+      - name: Install deps (incluye dev)
+        run: poetry install
+
+      - name: Black (check only)
+        run: poetry run black --check .
+
+      - name: isort (check only)
+        run: poetry run isort --check-only .
+
+      - name: flake8
+        run: poetry run flake8 .
+
+      - name: mypy
+        run: poetry run mypy app
+
+      - name: Bandit (SAST)
+        run: poetry run bandit -c .bandit -r app -f txt -o bandit-report.txt
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.txt
+
+  tests:
+    name: Tests + Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache Poetry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: poetry-${{ runner.os }}-
 
       - name: Install Poetry
@@ -48,7 +96,7 @@ jobs:
 
   docker:
     name: Build & Push Docker
-    needs: [tests]
+    needs: [quality, tests]   # ← bloquea build si falla calidad o tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
