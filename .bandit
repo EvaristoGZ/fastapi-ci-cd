@@ -1,3 +1,4 @@
-[bandit]
-targets: app
-skips: B101
+targets:
+  - app
+skips:
+  - B101
