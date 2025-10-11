@@ -228,7 +228,7 @@ jobs:
         run: poetry install
 
       - name: Setup Snyk
-        uses: snyk/actions/setup@v4
+        uses: snyk/actions/setup@v1
 
       - name: Snyk test (fail on high)
         run: snyk test --severity-threshold=high
