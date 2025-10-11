@@ -96,12 +96,13 @@ jobs:
 
   docker:
     name: Build & Push Docker
-    needs: [quality, tests]   # ← bloquea build si falla calidad o tests
+    needs: [quality, tests, trivy-fs]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
       id-token: write
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -126,10 +127,116 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build without push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          load: true
+
+      - name: Trivy image scan (table)
+        if: github.ref != 'refs/heads/main'
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha.substr(0,7) }}
+          format: 'table'
+          exit-code: '0'   # en develop no bloquea
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy image scan (fail on HIGH/CRITICAL in main)
+        if: github.ref == 'refs/heads/main'
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha.substr(0,7) }}
+          format: 'table'
+          exit-code: '1'   # en main sí bloquea
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # (Opcional) subir SARIF de imagen a Code Scanning
+      - name: Trivy image scan → SARIF
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha.substr(0,7) }}
+          format: 'sarif'
+          output: 'trivy-image.sarif'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+        continue-on-error: true
+
+      - name: Upload SARIF (image)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+
+      # Si todo lo anterior fue bien → push de etiquetas calculadas (incluye latest en main)
+      - name: Push image
+        if: success()
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  trivy-fs:
+    name: Trivy FS (repo/IaC/secrets) → Code Scanning
+    needs: [quality, tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Trivy FS scan (SARIF)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'sarif'
+          output: 'trivy-fs.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+          scanners: 'vuln,secret,misconfig'
+        env:
+          TRIVY_TIMEOUT: 5m
+
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+
+  snyk:
+    name: Snyk (Python deps)
+    needs: [quality, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install "poetry==1.8.3"
+
+      - name: Install deps (incl dev)
+        run: poetry install
+
+      - name: Setup Snyk
+        uses: snyk/actions/setup@v4
+
+      - name: Snyk test (fail on high)
+        run: snyk test --severity-threshold=high
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Snyk monitor
+        if: github.ref == 'refs/heads/main'
+        run: snyk monitor
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
