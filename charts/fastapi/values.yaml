@@ -10,9 +10,14 @@ imagePullSecrets:
   - name: ghcr-creds
 
 service:
-  type: ClusterIP
+  type: ClusterIP  # Cambiar a LoadBalancer para IP externa
   port: 80
   targetPort: 8000
+
+# Para habilitar ingress (opcional)
+ingress:
+  enabled: false  # Cambiar a true para habilitar
+  host: fastapi.local  # Cambiar por tu dominio
 
 # Configuraciones opcionales (simplificadas)
 resources: {}
