@@ -1,0 +1,13 @@
+image:
+  repository: ghcr.io/EvaristoGZ/fastapi-ci-cd  
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: ghcr-creds
+
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 10 }}

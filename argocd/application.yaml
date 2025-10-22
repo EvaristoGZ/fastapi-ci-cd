@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fastapi
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/EvaristoGZ/fastapi-ci-cd.git
+    targetRevision: main
+    path: charts/fastapi
+    helm:
+      values: |
+        image:
+          repository: ghcr.io/EvaristoGZ/fastapi-ci-cd
+          tag: latest
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: fastapi
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

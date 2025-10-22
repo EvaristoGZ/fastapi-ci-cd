@@ -1,0 +1,11 @@
+# Configuration for a Kind Cluster
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: fastapi-cluster
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 30080
+    hostPort: 30080
+    protocol: TCP
